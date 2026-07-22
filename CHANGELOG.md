@@ -3,6 +3,18 @@
 ## [v0.1.2] - 2026-07-22
 
 ### 🐛 修复
+- **`main.rs` Mutex poisoning 导致 panic**：
+  - 旧版所有 `lock().unwrap()` 在 panic 后 mutex 进入 poisoned 状态，后续所有 lock 都会直接 panic 导致程序崩溃。
+  - 修复：所有 `lock().unwrap()` 改为 `lock().unwrap_or_else(|e| e.into_inner())`，recover poisoned mutex。
+- **`config.rs` API Key 明文存储无权限保护**：
+  - 保存 config 后调用 `set_permissions(0o600)`，仅 owner 可读写。
+- **`config.rs` system_prompt 多行处理缺陷**：
+  - 保存时 `\n` 转义为 `\\n`（单行存储），加载时还原。避免多行 system_prompt 写入配置文件时损坏格式。
+- **`config.rs` 路径优先级**：
+  - `load()` 优先检查 `/etc/k_K/config.txt`（运行时路径），回退到 `config.txt`（相对路径）。
+- **`Cargo.toml` libc 版本约束过死**：
+  - 从 `"=0.2.150"` 改为 `"^0.2.150"`，允许补丁版本升级。
+  - release profile 添加 `debug = 1`，保留部分调试信息便于线上排查。
 - **`network.rs` API 错误解析完全坏掉**：
   - 之前 `extract_content` 查找 `"content"` 字段提取回复，但 OpenAI 错误响应是
     `{"error":{"message":"..."}}`，根本没有 `"content"`。任何 API 错误都会被报为"未知 API 错误"。
@@ -52,6 +64,9 @@
 - **`build_all.sh` 编译失败被管道吞掉** (`scripts/build_all.sh`)：
   - 旧版 `cargo build ... 2>&1 | tail -5` 走 `if` 时，pipeline 退码是 `tail` 的 0，cargo 编译失败也被当成成功。
   - 修复：用 `${PIPESTATUS[0]}` 拿 cargo 真实退码；编译后强校验产物存在。
+- **busybox sed 兼容性问题** (`scripts/build_busybox.sh`)：
+  - 引入 `config_set()` 辅助函数（grep→sed/append），兼容非 GNU sed。
+  - 编译前验证 `CONFIG_STATIC`、`CONFIG_FEATURE_WGET_HTTPS`、`CONFIG_FEATURE_WGET_OPENSSL` 已启用。
 - **busybox 复制后未校验** (`scripts/build_busybox.sh`)：
   - 修复：复制后 `[ -x ... ]` 强校验，不存在直接 exit 1。
 - **kernel .config 重复 `CONFIG_CGROUPS=n`** (`scripts/build_kernel.sh`)：
@@ -65,10 +80,33 @@
 - **退出码 0 优先**：新版用 `PIPESTATUS` 正确判定失败后回退 gnu 构建。
 - **API key 永不出 initramfs**：本地 `k_K/config.txt` 永远不会被 `build_initramfs.sh` 读取。
 
+- **`init` 进程退出后系统挂死** (`rootfs/init`)：
+  - 改为 `( while true; do k_K; sleep 3; done ) &` 后台循环，崩溃自动重启。
+  - 注释掉 `loadkeys`（BusyBox 未提供此命令）。
+- **`ui.rs` 双重清屏闪烁** (`k_K/src/ui.rs`)：
+  - `show_logo` 不再清屏（调用方已清屏），消除启动时闪屏。
+  - 候选字格式去掉末尾多余逗号；新增 `clear_candidates` 方法。
+- **`network.rs` 临时文件竞态** (`k_K/src/network.rs`)：
+  - 临时文件改用 PID 后缀 `/tmp/kk_chat_post_{PID}.json`，避免并发冲突。
+- **`build_kernel.sh` 缺失关键内核配置** (`scripts/build_kernel.sh`)：
+  - 添加 `CONFIG_SYSFS=y`、`CONFIG_DEVTMPFS=y`、`CONFIG_DEVTMPFS_MOUNT=y`、
+    `CONFIG_TTY=y`、`CONFIG_INPUT_KEYBOARD=y`、`CONFIG_INPUT_MOUSE=y`、`CONFIG_PRINTK=y`。
+  - 删除重复的 `CONFIG_CGROUPS=n`。
+- **`main.rs` 方向键延迟 + Escape 取消候选**：
+  - `ReadOutcome` 新增 `ArrowUp`/`ArrowDown`/`Escape` 变体。
+  - 方向键在转义序列循环中立即识别返回（不再走 50ms 超时）。
+  - Escape 键取消候选字选择，回到输入状态。
+- **`release.yml` 构建流程问题**：
+  - `apt-get install` 添加 `perl`（build_images.sh 需要）。
+  - 传递 `VERSION` 和 `SKIP_K_K_BUILD` 环境变量。
+  - EFI 烧录说明改为 FAT32 分区挂载 + cp（旧版 dd 方式不正确）。
+  - 7z 源码包从仓库根目录全量打包，与 source.zip 对齐。
+
 ### 🔄 变更
 
 - `k_K/src/handwriting.rs` 新增字段 `no_match_pending: AtomicBool`，公开读、私有写。
-- `k_K/src/main.rs` 主循环轮询 `no_match_pending`，命中时打印提示。
+- `k_K/src/main.rs` 主循环轮询 `no_match_pending`，命中时打印黄色提示。
+- `k_K/Cargo.toml` libc 依赖从 `"=0.2.150"` 改为 `"^0.2.150"`，release profile 加 `debug = 1`。
 
 ### 🔍 二次审核发现但未修复（标记供后续版本）
 
