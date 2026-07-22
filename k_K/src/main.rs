@@ -137,8 +137,16 @@ fn main() {
                 candidates = std::mem::take(&mut s.pending_candidates);
                 selected_cand = 0;
                 showing_candidates.store(true, Ordering::SeqCst);
+                s.no_match_pending.store(false, Ordering::SeqCst);
                 drop(s);
                 ui.show_candidates(&candidates, selected_cand);
+                continue;
+            }
+            // v0.1.2: 如果上次识别没匹配上, 打印一条提示
+            if s.no_match_pending.swap(false, Ordering::SeqCst) {
+                drop(s);
+                println!("\r\x1b[2K{}提示: 未识别出候选字, 请在画板上继续写或重试{}", colors::YELLOW, colors::RESET);
+                ui.show_prompt_with_input(&input_buf);
                 continue;
             }
         }
@@ -311,6 +319,9 @@ fn read_line_with_timeout(buf: &mut String, timeout: Duration) -> Result<ReadOut
                                     // linux:     \x1b[[A / \x1b[[B / \x1b[[C / \x1b[[D / \x1b[[E (4 字符)
                                     if seq.len() >= 5 { break; }
                                     if seq.len() >= 3 && !seq.contains('[') { break; }
+                                    // v0.1.2: 3 字节且含 [ 且结尾是字母（方向键 \x1b[A / \x1b[B 等），
+                                    // 旧逻辑漏判这条分支，每按一次方向键会多等 50ms 才返回
+                                    if seq.len() >= 3 && seq.contains('[') && seq.ends_with(|c: char| c.is_ascii_alphabetic()) { break; }
                                     if seq.len() >= 4 && seq.contains('[') && seq.ends_with(|c: char| c.is_ascii_alphabetic() || c == '~') { break; }
                                 }
                                 Ok(_) | Err(_) => {

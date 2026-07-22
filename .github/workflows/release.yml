@@ -90,18 +90,23 @@ jobs:
 
       - name: Package 7z (release archive)
         run: |
-          cd artifacts
+          cd "$GITHUB_WORKSPACE"
           VERSION=${GITHUB_REF_NAME}
-          7z a -mx=9 "k_K-linuxAI-${VERSION}.7z" \
-              k_K-linuxAI-${VERSION}.iso \
-              k_K-linuxAI-${VERSION}.efi \
-              vmlinuz initramfs.cpio.xz \
-              busybox unifont.pf2
-          7z a -mx=9 "k_K-linuxAI-${VERSION}-source.7z" \
-              "../k_K/src" "../k_K/Cargo.toml" \
-              "../scripts" "../boot" "../rootfs" \
-              "../k_K/config.txt" 2>/dev/null || true
-          ls -la
+          # 完整 release 压缩包: ISO + EFI + 内部组件
+          7z a -mx=9 "artifacts/k_K-linuxAI-${VERSION}.7z" \
+              "artifacts/k_K-linuxAI-${VERSION}.iso" \
+              "artifacts/k_K-linuxAI-${VERSION}.efi" \
+              artifacts/vmlinuz artifacts/initramfs.cpio.xz \
+              artifacts/busybox artifacts/unifont.pf2
+          # 源码包: 与 source.zip 保持完全一致,只额外排除构建产物和 k_K/config.txt
+          # 排除: artifacts/, k_K/target/, .git/, k_K/config.txt
+          7z a -mx=9 "artifacts/k_K-linuxAI-${VERSION}-source.7z" \
+              . \
+              -xr!artifacts \
+              -xr!k_K/target \
+              -xr!.git \
+              -xr!k_K/config.txt
+          ls -la artifacts/
 
       - name: Upload artifacts to release
         uses: softprops/action-gh-release@v2

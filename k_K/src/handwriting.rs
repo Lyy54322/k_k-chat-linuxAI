@@ -35,6 +35,9 @@ impl Stroke {
 pub struct HandwritingState {
     pub strokes: Vec<Stroke>,
     pub pending_candidates: Vec<String>,
+    /// v0.1.2: 上一次识别没有匹配上,主线程轮询后展示 "未识别" 提示
+    /// 使用 AtomicBool 避免主线程额外加锁
+    pub no_match_pending: AtomicBool,
     pub needs_redraw: bool,
     pub has_new_stroke: bool,
     current_stroke: Option<Stroke>,
@@ -48,6 +51,7 @@ impl HandwritingState {
         Ok(HandwritingState {
             strokes: Vec::new(),
             pending_candidates: Vec::new(),
+            no_match_pending: AtomicBool::new(false),
             needs_redraw: false,
             has_new_stroke: false,
             current_stroke: None,
@@ -176,8 +180,13 @@ pub fn handwriting_loop(
                                 let mut s = state.lock().unwrap();
                                 s.pending_candidates = cands;
                                 s.strokes.clear();
+                                s.no_match_pending.store(false, Ordering::SeqCst);
                                 fb.clear_canvas();
                                 fb.draw_separator();
+                            } else {
+                                // v0.1.2: 识别不出, 置位让主线程打印提示
+                                // 笔画保留在画布上, 允许用户接着加笔画重试
+                                state.lock().unwrap().no_match_pending.store(true, Ordering::SeqCst);
                             }
                         }
                     }
