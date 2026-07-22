@@ -18,7 +18,8 @@ mkdir -p "$WORK" "$ARTIFACT_DIR"
 if [ ! -d "$WORK/linux-${KERNEL_VERSION}" ]; then
     echo ">>> 下载 Linux ${KERNEL_VERSION} 内核源..."
     cd "$WORK"
-    wget -q --show-progress \
+    # 不加 -q, --show-progress 本身就是进度输出,两者冲突会让 wget 退码非 0
+    wget --tries=3 --timeout=120 --show-progress \
         "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-${KERNEL_VERSION}.tar.xz" \
         -O "linux-${KERNEL_VERSION}.tar.xz"
     tar -xJf "linux-${KERNEL_VERSION}.tar.xz"

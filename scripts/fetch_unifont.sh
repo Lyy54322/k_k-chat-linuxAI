@@ -16,7 +16,8 @@ URL="https://ftp.gnu.org/gnu/unifont/unifont-${UNIFONT_VERSION}/unifont-${UNIFON
 
 if [ ! -f "$ARTIFACT_DIR/unifont.hex" ]; then
     echo ">>> 下载 unifont ${UNIFONT_VERSION} (~16 MB)..."
-    wget -q --show-progress "$URL" -O "$ARTIFACT_DIR/unifont.hex.gz"
+    # 不加 -q, --show-progress 本身就是进度输出,两者冲突会让 wget 退码非 0
+    wget --tries=3 --timeout=60 --show-progress "$URL" -O "$ARTIFACT_DIR/unifont.hex.gz"
     gunzip -f "$ARTIFACT_DIR/unifont.hex.gz"
 fi
 

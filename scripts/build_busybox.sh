@@ -18,7 +18,8 @@ mkdir -p "$WORK" "$ARTIFACT_DIR"
 if [ ! -d "$WORK/busybox-${BUSYBOX_VERSION}" ]; then
     echo ">>> 下载 busybox ${BUSYBOX_VERSION}..."
     cd "$WORK"
-    wget -q --show-progress \
+    # 不加 -q, --show-progress 本身就是进度输出,两者冲突会让 wget 退码非 0
+    wget --tries=3 --timeout=60 --show-progress \
         "https://busybox.net/downloads/busybox-${BUSYBOX_VERSION}.tar.bz2" \
         -O "busybox-${BUSYBOX_VERSION}.tar.bz2"
     tar -xjf "busybox-${BUSYBOX_VERSION}.tar.bz2"
