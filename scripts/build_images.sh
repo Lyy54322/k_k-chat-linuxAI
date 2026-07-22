@@ -41,7 +41,6 @@ grub-mkstandalone \
     -O x86_64-efi \
     -o "$EFI_OUT" \
     --modules="all_video gfxterm font gfxmenu part_gpt part_msdos iso9660 normal search linux reboot halt" \
-    --locales=zh_CN \
     --themes= \
     --fonts= \
     "$STAGE/boot/grub/grub.cfg"
@@ -61,7 +60,6 @@ grub-mkstandalone \
     -O x86_64-efi \
     -o "$EFI_BOOT_IMG" \
     --modules="all_video gfxterm font normal linux reboot halt" \
-    --locales=zh_CN \
     --themes= \
     --fonts= \
     /boot/grub/grub.cfg 2>/dev/null \
