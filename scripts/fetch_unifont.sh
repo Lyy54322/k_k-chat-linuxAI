@@ -11,7 +11,7 @@ ARTIFACT_DIR="${ARTIFACT_DIR:-$(cd "$(dirname "$0")/.." && pwd)/artifacts}"
 mkdir -p "$ARTIFACT_DIR"
 
 # unifont 官方 hex 版本
-UNIFONT_VERSION="16.0.01"
+UNIFONT_VERSION="16.0.02"
 URL="https://ftp.gnu.org/gnu/unifont/unifont-${UNIFONT_VERSION}/unifont-${UNIFONT_VERSION}.hex.gz"
 
 if [ ! -f "$ARTIFACT_DIR/unifont.hex" ]; then
