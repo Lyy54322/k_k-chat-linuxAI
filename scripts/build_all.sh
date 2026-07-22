@@ -14,13 +14,18 @@ echo "==========================================="
 echo "  k_K chat linuxAI v0.1.1 完整构建"
 echo "==========================================="
 
+mkdir -p "$ARTIFACT_DIR"
 # 1. 编译 k_K (rust 静态二进制, 链接 musl, 不依赖 libc)
 echo "[1/5] 编译 k_K 主程序..."
 cd "$ROOT/k_K"
 if command -v cargo >/dev/null 2>&1; then
-    cargo build --release --target x86_64-unknown-linux-musl 2>&1 | tail -5 || \
-    cargo build --release 2>&1 | tail -5
-    cp target/release/k_K "$ARTIFACT_DIR/k_K"
+    # 优先 musl 静态, 失败回退 gnu
+    if cargo build --release --target x86_64-unknown-linux-musl 2>&1 | tail -5; then
+        cp target/x86_64-unknown-linux-musl/release/kk_chat "$ARTIFACT_DIR/k_K"
+    else
+        cargo build --release 2>&1 | tail -5
+        cp target/release/kk_chat "$ARTIFACT_DIR/k_K"
+    fi
 elif command -v rustc >/dev/null 2>&1; then
     # 极简模式: 直接 rustc
     rustc --edition 2021 -O \
