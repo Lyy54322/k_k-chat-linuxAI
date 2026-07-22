@@ -30,9 +30,9 @@ impl AppConfig {
             for line in content.lines() {
                 let line = line.trim();
                 if line.is_empty() || line.starts_with('#') { continue; }
-                // splitn(2, '=') 返回 SplitN 迭代器，next() 拿第一段，
+                // split_once('=') 在第一个 = 处切成 (key, value)，
                 // 后面所有字符（包括 =）都会落到 value 里，不会丢
-                if let Some((key, value)) = line.splitn(2, '=').next() {
+                if let Some((key, value)) = line.split_once('=') {
                     match key.trim() {
                         "api_base"      => config.api_base = value.trim().to_string(),
                         "api_key"       => config.api_key = value.trim().to_string(),

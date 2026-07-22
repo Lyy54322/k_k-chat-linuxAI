@@ -41,10 +41,16 @@ struct input_absinfo {
 }
 
 // ── ioctl 号 ──────────────────────────────────────────────────────
-// libc::ioctl 第二个参数在 musl 上必须是 c_int（i32），用 c_int 强转避免平台差异
-const EVIOCGNAME_256: libc::c_int = 0x8100_4506_i32 as libc::c_int;
-fn eviocgabs(abs: u16) -> libc::c_int {
-    (0x8018_4540_i64 + (abs as i64) * 8) as libc::c_int
+// libc::ioctl 第二参数类型跨平台不同：gnu = c_ulong (u64), musl = c_int (i32)
+// 用 cfg_attr 让同一段代码两边都能编
+#[cfg(target_env = "musl")]
+type IoctlReq = libc::c_int;
+#[cfg(not(target_env = "musl"))]
+type IoctlReq = libc::c_ulong;
+
+const EVIOCGNAME_256: IoctlReq = 0x8100_4506_i64 as IoctlReq;
+fn eviocgabs(abs: u16) -> IoctlReq {
+    (0x8018_4540_i64 + (abs as i64) * 8) as IoctlReq
 }
 
 // ── 公共类型 ──────────────────────────────────────────────────────
