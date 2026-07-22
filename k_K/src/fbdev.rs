@@ -63,9 +63,9 @@ pub struct fb_var_screeninfo {
     pub reserved:    [u32; 4],
 }
 
-// ioctl 常量
-const FBIOGET_FSCREENINFO: u64 = 0x4602;
-const FBIOGET_VSCREENINFO: u64 = 0x4600;
+// ioctl 常量（libc::ioctl 第二个参数 musl 上要求 c_int）
+const FBIOGET_FSCREENINFO: libc::c_int = 0x4602;
+const FBIOGET_VSCREENINFO: libc::c_int = 0x4600;
 
 // ── Framebuffer 设备 ───────────────────────────────────────────────
 pub struct Framebuffer {

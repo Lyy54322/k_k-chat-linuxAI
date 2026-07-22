@@ -587,7 +587,7 @@ fn model_select_menu(config: &mut AppConfig) {
 fn tab_menu(
     conversations: &mut Vec<Vec<(String, String)>>,
     active_conv: &mut usize,
-    ui: &TerminalUI,
+    _ui: &TerminalUI,
 ) {
     loop {
         println!("\n{}===== 对话标签管理 ====={}", colors::CYAN, colors::RESET);

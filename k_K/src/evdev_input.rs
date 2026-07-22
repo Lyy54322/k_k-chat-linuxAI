@@ -41,9 +41,10 @@ struct input_absinfo {
 }
 
 // ── ioctl 号 ──────────────────────────────────────────────────────
-const EVIOCGNAME_256: u64 = 0x8100_4506;
-fn eviocgabs(abs: u16) -> u64 {
-    0x8018_4540 + (abs as u64) * 8
+// libc::ioctl 第二个参数在 musl 上必须是 c_int（i32），用 c_int 强转避免平台差异
+const EVIOCGNAME_256: libc::c_int = 0x8100_4506_i32 as libc::c_int;
+fn eviocgabs(abs: u16) -> libc::c_int {
+    (0x8018_4540_i64 + (abs as i64) * 8) as libc::c_int
 }
 
 // ── 公共类型 ──────────────────────────────────────────────────────

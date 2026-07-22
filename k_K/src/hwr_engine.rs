@@ -260,7 +260,7 @@ impl HwrEngine {
             | '贵' | '界' | '虹' | '虾' | '蚁' | '思' | '蚂' | '虽' | '品' | '咽'
             | '骂' | '哗' | '响' | '咬' | '咳' | '昧' | '禺' | '畔'
             | '贴' | '眨' | '矩' | '刷' | '署' | '骨' | '幽' | '柔' | '费'
-            | '闸' | '降' | '限' | '俊' | '促' | '保' | '俞' | '信' | '俗'
+            | '降' | '限' | '俊' | '促' | '保' | '俞' | '信' | '俗'
             | '俘' | '皇' | '泉' | '禹' | '侯' | '追' | '婶' | '退' | '飞'
             | '律' | '盾' | '须' | '叙' | '剑' | '逃' | '食' | '兔' | '勉' | '狭'
             | '勇' | '癸' | '孩' | '语' | '彦' | '彻'
@@ -317,7 +317,7 @@ impl HwrEngine {
         results
     }
 
-    fn extract_features(&self, points: &[(i32, i32)], canvas_w: u32, canvas_h: u32) -> FeatureVector {
+    fn extract_features(&self, points: &[(i32, i32)], canvas_w: u32, _canvas_h: u32) -> FeatureVector {
         if points.is_empty() {
             return FeatureVector::default();
         }
