@@ -379,7 +379,8 @@ impl HwrEngine {
         // 水平/垂直穿越次数
         let mid_y = (min_y + max_y) / 2;
         let mid_x = (min_x + max_x) / 2;
-        let (mut h_cross, mut v_cross) = (0, 0);
+        // 显式标 usize 类型，避免 i32 推断
+        let (mut h_cross, mut v_cross): (usize, usize) = (0, 0);
         for i in 1..points.len() {
             let (y1, y2) = (points[i - 1].1, points[i].1);
             let (x1, x2) = (points[i - 1].0, points[i].0);
