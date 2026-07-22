@@ -279,7 +279,7 @@ impl HwrEngine {
             }
             if seen.insert(*ch) {
                 results.push(ch.to_string());
-                if results.len() >= 10 {
+                if results.len() >= 5 {
                     break;
                 }
             }
