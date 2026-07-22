@@ -74,6 +74,11 @@ jobs:
         env:
           ARTIFACT_DIR: ${{ github.workspace }}/artifacts
           K_K_BIN: ${{ github.workspace }}/artifacts/k_K
+          # v0.1.2: 传 VERSION 给 build_images.sh
+          # 之前没传，build_images.sh 默认 VERSION=v0.1.1，
+          # tag v0.1.2 触发的 release 会生成 k_K-linuxAI-v0.1.1.efi/.iso
+          # 但上传步骤找 k_K-linuxAI-v0.1.2.*，结果 release 资产全丢失。
+          VERSION: ${{ github.ref_name }}
         run: |
           mkdir -p "$ARTIFACT_DIR"
           cp k_K/target/x86_64-unknown-linux-musl/release/kk_chat "$ARTIFACT_DIR/k_K"

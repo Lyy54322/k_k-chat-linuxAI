@@ -156,18 +156,38 @@ impl MouseInput {
 
         match ev.event_type {
             EV_KEY => match ev.code {
-                BTN_LEFT => Some(MouseEvent { x: self.x, y: self.y, event_type: if ev.value != 0 { MouseEventType::LeftDown } else { MouseEventType::LeftUp } }),
-                BTN_RIGHT => Some(MouseEvent { x: self.x, y: self.y, event_type: MouseEventType::RightDown }),
+                BTN_LEFT => Some(MouseEvent {
+                    x: self.x, y: self.y,
+                    event_type: if ev.value != 0 { MouseEventType::LeftDown } else { MouseEventType::LeftUp },
+                }),
+                BTN_RIGHT => Some(MouseEvent {
+                    x: self.x, y: self.y,
+                    event_type: MouseEventType::RightDown,
+                }),
                 _ => None,
             },
+            // 相对鼠标：每次 REL_X/REL_Y 直接发 Motion
             EV_REL => {
+                let mut moved = false;
                 match ev.code {
-                    REL_X => { self.x = (self.x + ev.value).clamp(0, self.screen_w as i32 - 1); }
-                    REL_Y => { self.y = (self.y + ev.value).clamp(0, self.screen_h as i32 - 1); }
+                    REL_X => {
+                        self.x = (self.x + ev.value).clamp(0, self.screen_w as i32 - 1);
+                        moved = true;
+                    }
+                    REL_Y => {
+                        self.y = (self.y + ev.value).clamp(0, self.screen_h as i32 - 1);
+                        moved = true;
+                    }
                     _ => {}
                 }
-                Some(MouseEvent { x: self.x, y: self.y, event_type: MouseEventType::Motion })
+                if moved {
+                    Some(MouseEvent { x: self.x, y: self.y, event_type: MouseEventType::Motion })
+                } else {
+                    None
+                }
             }
+            // 绝对定位（触屏 / 触摸板）：累积 ABS_X/ABS_Y 后等 SYN_REPORT 一次性发 Motion
+            // 这样手写笔迹是按"报点"而不是按单个坐标更新，避免太多事件
             EV_ABS => {
                 match ev.code {
                     ABS_X => {
@@ -184,8 +204,22 @@ impl MouseInput {
                 }
                 None
             }
+            // SYN_REPORT：本次报点结束，统一发一个 Motion 事件（绝对定位设备用）
+            SYN_REPORT => {
+                if self.is_absolute_device() {
+                    Some(MouseEvent { x: self.x, y: self.y, event_type: MouseEventType::Motion })
+                } else {
+                    None
+                }
+            }
             _ => None,
         }
+    }
+
+    /// 通过 ABS_X/ABS_Y 范围是否被查询过，且非默认值，判断是不是绝对定位设备
+    /// query_abs_limits() 成功后会更新 abs_x_max；如果还是默认 1024，大概率是相对设备
+    fn is_absolute_device(&self) -> bool {
+        self.abs_x_max > 1024 || self.abs_y_max > 1024
     }
 
     fn poll_legacy_mouse(&mut self) -> Option<MouseEvent> {

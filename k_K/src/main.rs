@@ -309,8 +309,10 @@ fn read_line_with_timeout(buf: &mut String, timeout: Duration) -> Result<ReadOut
                                     // F1-F5 vt100: \x1bOP/Q/R/S (3 字符)
                                     // xterm:     \x1b[11~ / \x1b[12~ / \x1b[13~ / \x1b[14~ / \x1b[15~ (5 字符)
                                     // linux:     \x1b[[A / \x1b[[B / \x1b[[C / \x1b[[D / \x1b[[E (4 字符)
+                                    // 方向键:   \x1b[A / \x1b[B / \x1b[C / \x1b[D / \x1b[H / \x1b[F (3 字符)
                                     if seq.len() >= 5 { break; }
-                                    if seq.len() >= 3 && !seq.contains('[') { break; }
+                                    if seq.len() >= 3 && !seq.contains('[') { break; } // VT100 F-key
+                                    if seq.len() == 3 && seq.starts_with("\x1b[") && seq.ends_with(|c: char| matches!(c, 'A'|'B'|'C'|'D'|'H'|'F')) { break; } // 方向键立刻收
                                     if seq.len() >= 4 && seq.contains('[') && seq.ends_with(|c: char| c.is_ascii_alphabetic() || c == '~') { break; }
                                 }
                                 Ok(_) | Err(_) => {

@@ -9,9 +9,12 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 ARTIFACT_DIR="$ROOT/artifacts"
 export ARTIFACT_DIR
+# v0.1.2: VERSION 从环境变量读，默认 v0.1.1 保持向后兼容
+VERSION="${VERSION:-v0.1.1}"
+export VERSION
 
 echo "==========================================="
-echo "  k_K chat linuxAI v0.1.1 完整构建"
+echo "  k_K chat linuxAI ${VERSION} 完整构建"
 echo "==========================================="
 
 mkdir -p "$ARTIFACT_DIR"
