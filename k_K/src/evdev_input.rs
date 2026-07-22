@@ -63,6 +63,7 @@ pub enum MouseEventType {
 }
 
 pub fn find_mouse_device() -> Option<String> {
+    // 优先按 event0-5 顺序查找，遇到第一个鼠标类设备就返回
     let candidates = [
         "/dev/input/event0","/dev/input/event1","/dev/input/event2",
         "/dev/input/event3","/dev/input/event4","/dev/input/event5",
@@ -72,13 +73,20 @@ pub fn find_mouse_device() -> Option<String> {
             return Some(path.to_string());
         }
     }
+    // 扫一遍 /dev/input/ 下其它 event* 设备（防止 event6+ 跳过）
     if let Ok(entries) = fs::read_dir("/dev/input/") {
+        let mut found = None;
         for entry in entries.flatten() {
             let p = entry.path();
             let s = p.to_string_lossy().to_string();
-            if s.contains("event") && is_mouse_device(&s) { return Some(s); }
+            if s.contains("event") && is_mouse_device(&s) {
+                found = Some(s);
+                break;
+            }
         }
+        if let Some(dev) = found { return Some(dev); }
     }
+    // 兜底：传统 PS/2 鼠标协议
     if Path::new("/dev/input/mice").exists() { return Some("/dev/input/mice".into()); }
     None
 }

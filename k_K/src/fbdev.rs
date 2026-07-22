@@ -75,6 +75,9 @@ pub struct Framebuffer {
     pub height: u32,
     line_len: u32,
     bpp: u32,
+    /// mmap 实际映射的字节数，Drop 时 munmap 用这个，不能用 line_len*height
+    /// (line_length 含 padding，会比 smem_len/height 大)
+    smem_len: usize,
     pub canvas_top: u32,
     pub canvas_height: u32,
 }
@@ -116,7 +119,7 @@ impl Framebuffer {
         let canvas_top    = height * 55 / 100;
         let canvas_height = height - canvas_top;
 
-        Ok(Framebuffer { fd, ptr: ptr as *mut u8, width, height, line_len, bpp, canvas_top, canvas_height })
+        Ok(Framebuffer { fd, ptr: ptr as *mut u8, width, height, line_len, bpp, smem_len: screen_size, canvas_top, canvas_height })
     }
 
     pub fn set_pixel(&self, x: u32, y: u32, r: u8, g: u8, b: u8) {
@@ -162,6 +165,7 @@ impl Framebuffer {
         if x < 0 || y < 0 || x >= self.width as i32 || y >= self.height as i32 { return; }
         if (y as u32) < self.canvas_top { return; }
         let bytes = self.bpp / 8;
+        if bytes < 3 { return; }  // 不支持 16 位及以下
         let off = (y as usize * self.line_len as usize) + (x as usize * bytes as usize);
         let a = alpha as u32;
         let inv = 255 - a;
@@ -171,6 +175,14 @@ impl Framebuffer {
                 *p             = (((b as u32) * a + (*p as u32) * inv) / 255) as u8;
                 *p.add(1)     = (((g as u32) * a + (*p.add(1) as u32) * inv) / 255) as u8;
                 *p.add(2)     = (((r as u32) * a + (*p.add(2) as u32) * inv) / 255) as u8;
+            }
+        } else if bytes == 3 {
+            // RGB888 同样需要 alpha blend
+            unsafe {
+                let p = self.ptr.add(off);
+                *p         = (((b as u32) * a + (*p as u32) * inv) / 255) as u8;
+                *p.add(1) = (((g as u32) * a + (*p.add(1) as u32) * inv) / 255) as u8;
+                *p.add(2) = (((r as u32) * a + (*p.add(2) as u32) * inv) / 255) as u8;
             }
         }
     }
@@ -200,7 +212,9 @@ impl Framebuffer {
 impl Drop for Framebuffer {
     fn drop(&mut self) {
         unsafe {
-            libc::munmap(self.ptr as *mut libc::c_void, (self.line_len * self.height) as usize);
+            // 用 mmap 时拿到的真实长度 (smem_len)，不要用 line_len*height
+            // 因为 line_length 含 padding，会比实际 smem_len/height 大
+            libc::munmap(self.ptr as *mut libc::c_void, self.smem_len);
             libc::close(self.fd);
         }
     }

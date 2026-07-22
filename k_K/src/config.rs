@@ -30,7 +30,9 @@ impl AppConfig {
             for line in content.lines() {
                 let line = line.trim();
                 if line.is_empty() || line.starts_with('#') { continue; }
-                if let Some((key, value)) = line.split_once('=') {
+                // splitn(2, '='): 只在第一个 = 处切分，保留后面所有字符（包括 =）
+                // 这样 api_key / system_prompt 等含 = 的值能被完整保留
+                if let Some((key, value)) = line.splitn(2, '=') {
                     match key.trim() {
                         "api_base"      => config.api_base = value.trim().to_string(),
                         "api_key"       => config.api_key = value.trim().to_string(),

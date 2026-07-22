@@ -1,0 +1,31 @@
+# .github/workflows/ci.yml
+# 每次 push / PR 跑 cargo check + cargo build, 防止破坏编译
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  build:
+    name: cargo build
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        target: [x86_64-unknown-linux-gnu, x86_64-unknown-linux-musl]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: k_K -> target
+      - name: cargo check
+        working-directory: k_K
+        run: cargo check --target ${{ matrix.target }} --release
+      - name: cargo build (musl only)
+        working-directory: k_K
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: cargo build --target ${{ matrix.target }} --release

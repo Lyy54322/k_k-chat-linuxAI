@@ -114,11 +114,14 @@ fn main() {
     let hw_state_clone = hw_state.clone();
     let hw_engine_clone = hwr_engine.clone();
     let hw_running_clone = hw_running.clone();
-    if hw_state.is_some() {
-        let _ = thread::spawn(move || {
+    // 保存 JoinHandle 以便退出时 join，避免手写线程还在跑程序就退了
+    let hw_handle: Option<thread::JoinHandle<()>> = if hw_state.is_some() {
+        Some(thread::spawn(move || {
             handwriting::handwriting_loop(hw_state_clone, hw_engine_clone, hw_running_clone);
-        });
-    }
+        }))
+    } else {
+        None
+    };
 
     // ── 主交互循环 ────────────────────────────────────────────────
     let mut input_buf = String::new();
@@ -168,6 +171,27 @@ fn main() {
                                 selected_cand += 1;
                                 ui.show_candidates(&candidates, selected_cand);
                             }
+                            continue;
+                        }
+                        // 数字键 1-5 快速选择对应候选字（README 承诺的功能）
+                        s if s.len() == 1 => {
+                            if let Some(d) = s.chars().next().and_then(|c| c.to_digit(10)) {
+                                if d >= 1 && (d as usize) <= candidates.len() {
+                                    let idx = (d as usize) - 1;
+                                    input_buf.push_str(&candidates[idx]);
+                                    candidates.clear();
+                                    showing_candidates.store(false, Ordering::SeqCst);
+                                    ui.show_prompt_with_input(&input_buf);
+                                    continue;
+                                }
+                            }
+                            // 其它单字符：回车确认或忽略
+                            if !candidates.is_empty() && selected_cand < candidates.len() {
+                                input_buf.push_str(&candidates[selected_cand]);
+                            }
+                            candidates.clear();
+                            showing_candidates.store(false, Ordering::SeqCst);
+                            ui.show_prompt_with_input(&input_buf);
                             continue;
                         }
                         _ => {
@@ -227,6 +251,10 @@ fn main() {
 
     // ── 退出清理 ────────────────────────────────────────────────
     hw_running.store(false, Ordering::SeqCst);
+    if let Some(h) = hw_handle {
+        // 给手写线程最多 500ms 时间自己退出
+        let _ = h.join();
+    }
     println!("\n{}k_K Chat 已退出，输入 reboot 关机或继续使用 busybox shell{}", colors::CYAN, colors::RESET);
 }
 
@@ -605,12 +633,20 @@ fn tab_menu(
                 io::stdin().read_line(&mut num).ok();
                 if let Ok(idx) = num.trim().parse::<usize>() {
                     if idx >= 1 && idx <= conversations.len() {
-                        conversations.remove(idx - 1);
-                        if *active_conv >= conversations.len() {
+                        let removed_idx = idx - 1;
+                        conversations.remove(removed_idx);
+                        // 调整 active_conv：删除的可能在 active 之前/之后/就是 active
+                        if conversations.is_empty() {
+                            // 不可能，因为上面已经 len() <= 1 时 continue 了
+                            *active_conv = 0;
+                        } else if removed_idx < *active_conv {
+                            // 删的在 active 之前，active 位置前移
+                            *active_conv -= 1;
+                        } else if removed_idx == *active_conv && *active_conv >= conversations.len() {
+                            // 删的就是 active 且到了末尾
                             *active_conv = conversations.len() - 1;
-                        } else if *active_conv >= idx.saturating_sub(1) && *active_conv > 0 && idx - 1 <= *active_conv {
-                            // no-op
                         }
+                        // else: 删的在 active 之后，active 不需要动
                         println!("{}已删除第{}号对话{}", colors::CYAN, idx, colors::RESET);
                     }
                 }

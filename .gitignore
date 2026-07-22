@@ -1,0 +1,42 @@
+# Rust 构建产物
+/k_K/target/
+**/*.rs.bk
+Cargo.lock
+
+# Linux 内核
+**/.config.old
+**/Module.symvers
+**/System.map
+**/vmlinux
+**/vmlinuz
+**/*.o
+**/*.ko
+**/*.cmd
+**/scripts/sign-file
+
+# busybox 构建产物
+**/busybox
+**/busybox_unstripped
+**/.config.old
+
+# 镜像构建产物
+/artifacts/
+*.iso
+*.efi
+*.img
+*.7z
+*.zip
+
+# unifont 临时下载
+**/unifont.hex.gz
+**/unifont-*.hex
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# 系统临时
+*.tmp
+*.bak

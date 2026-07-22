@@ -71,7 +71,8 @@ impl TerminalUI {
     }
 
     pub fn show_candidates(&self, candidates: &[String], selected: usize) {
-        print!("\n{}候选字:{} ", c::CYAN, c::RESET);
+        // \r 回到行首 + \x1b[2K 清整行，避免上一轮候选字残留
+        print!("\r\x1b[2K{}候选字:{} ", c::CYAN, c::RESET);
         for (i, c) in candidates.iter().enumerate() {
             if i == selected {
                 print!("{}[{}]{}, ", c::CYAN, c, c::RESET);
@@ -79,7 +80,7 @@ impl TerminalUI {
                 print!("{}{}{}, ", c::YELLOW, c, c::RESET);
             }
         }
-        print!("{}↑↓选择 回车确认{}", c::CYAN, c::RESET);
+        print!("{}↑↓选择 数字键快速选择 回车确认{}", c::CYAN, c::RESET);
         io::stdout().flush().ok();
     }
 

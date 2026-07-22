@@ -163,13 +163,13 @@ pub fn handwriting_loop(
             }
         } else {
             // 无事件 → 检查是否需要手写识别
-            let should_recognize = {
+            {
                 let mut s = state.lock().unwrap();
                 if s.has_new_stroke && hwr_engine.is_some() {
                     s.has_new_stroke = false;
                     let pts: Vec<(i32, i32)> = s.strokes.iter().flat_map(|st| st.points.iter().cloned()).collect();
                     drop(s);
-                    if pts.len() < 3 { false } else {
+                    if pts.len() >= 3 {
                         if let Some(ref eng) = hwr_engine {
                             let cands = eng.lock().unwrap().recognize(&pts, fb.width, fb.canvas_height);
                             if !cands.is_empty() {
@@ -180,11 +180,9 @@ pub fn handwriting_loop(
                                 fb.draw_separator();
                             }
                         }
-                        false
                     }
-                } else { false }
-            };
-            let _ = should_recognize;
+                }
+            }
             std::thread::sleep(Duration::from_millis(5));
         }
     }

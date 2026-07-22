@@ -1,0 +1,163 @@
+# .github/workflows/release.yml
+# k_K chat linuxAI 自动发布 workflow
+#
+# 触发:
+#   1. push tag v*.*.* (推荐)
+#   2. workflow_dispatch 手动触发
+#
+# 流程:
+#   编译 k_K -> busybox -> 内核 -> unifont -> initramfs -> EFI/ISO
+#   打成 zip + 7z 上传到 GitHub Release
+#
+# 依赖 Secrets (在仓库 Settings -> Secrets -> Actions 里配):
+#   GITHUB_TOKEN: 自动提供, 用于上传 release 资产
+#   (如果用外部签名 / 推送到 npm 等, 可加更多 secret)
+
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号 (e.g. v0.1.1)'
+        required: true
+        default: 'v0.1.1'
+
+permissions:
+  contents: write   # 写 release 需要
+
+jobs:
+  build:
+    name: build & publish
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+              build-essential bc bison flex libelf-dev libssl-dev \
+              wget xz-utils cpio \
+              grub-efi-amd64-bin xorriso mtools dosfstools \
+              p7zip-full file ca-certificates
+
+      - name: Setup Rust (stable, musl)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            k_K/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('k_K/Cargo.lock') }}
+
+      - name: Build k_K (musl static)
+        working-directory: k_K
+        run: |
+          cargo build --release --target x86_64-unknown-linux-musl
+          ls -la target/x86_64-unknown-linux-musl/release/k_K
+          file target/x86_64-unknown-linux-musl/release/k_K
+
+      - name: Run full build pipeline
+        env:
+          ARTIFACT_DIR: ${{ github.workspace }}/artifacts
+          K_K_BIN: ${{ github.workspace }}/artifacts/k_K
+        run: |
+          mkdir -p "$ARTIFACT_DIR"
+          cp k_K/target/x86_64-unknown-linux-musl/release/k_K "$ARTIFACT_DIR/k_K"
+          chmod +x scripts/*.sh
+          bash scripts/build_all.sh
+
+      - name: Package source zip
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          # 把 v0.1.1 tag 替换成当前 tag
+          VERSION=${GITHUB_REF_NAME}
+          zip -r "artifacts/k_K-linuxAI-${VERSION}-source.zip" \
+              . -x "artifacts/*" "k_K/target/*" ".git/*"
+
+      - name: Package 7z (release archive)
+        run: |
+          cd artifacts
+          VERSION=${GITHUB_REF_NAME}
+          7z a -mx=9 "k_K-linuxAI-${VERSION}.7z" \
+              k_K-linuxAI-${VERSION}.iso \
+              k_K-linuxAI-${VERSION}.efi \
+              vmlinuz initramfs.cpio.xz \
+              busybox unifont.pf2
+          7z a -mx=9 "k_K-linuxAI-${VERSION}-source.7z" \
+              "../k_K/src" "../k_K/Cargo.toml" \
+              "../scripts" "../boot" "../rootfs" \
+              "../k_K/config.txt" 2>/dev/null || true
+          ls -la
+
+      - name: Upload artifacts to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: k_K chat linuxAI ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ## k_K chat linuxAI ${{ github.ref_name }}
+
+            ### 功能特性
+            - 离线中文手写识别 (Unicode 码点+笔画数表模板, 零依赖)
+            - evdev 鼠标/触控板输入 (含抖动滤波)
+            - fbdev 帧缓冲画布渲染 (抗锯齿笔迹)
+            - 终端 UI + 候选字栏 + 帮助文档
+            - 数字键 1-5 快速选择候选字
+            - HTTPS 接入任意 OpenAI 兼容 API (busybox wget)
+
+            ### 资源说明
+            - `k_K-linuxAI-${{ github.ref_name }}.7z` — 完整 release 包 (EFI + ISO + 组件)
+            - `k_K-linuxAI-${{ github.ref_name }}.iso` — 启动 ISO, 可直接烧录到 U 盘
+            - `k_K-linuxAI-${{ github.ref_name }}.efi` — 单文件 EFI 启动镜像
+            - `k_K-linuxAI-${{ github.ref_name }}-source.zip` — 源码包
+
+            ### 烧录方式
+            ```bash
+            # U 盘
+            sudo dd if=k_K-linuxAI-${{ github.ref_name }}.iso of=/dev/sdX bs=4M status=progress
+
+            # 或直接 dd efi 文件
+            sudo dd if=k_K-linuxAI-${{ github.ref_name }}.efi of=/dev/sdX1 bs=4M
+            ```
+
+            ### 修复 (vs v0.1.0)
+            - 🐛 **手写识别模板**: 从 hash 噪声改造为基于 Unicode 码点+笔画数表的稳定指纹
+            - 🐛 **fbdev munmap**: 修复 line_len*height 与 smem_len 不一致的 UB
+            - 🐛 **候选字选择**: 实现 README 承诺的数字键 1-5 快速选择
+            - 🐛 **删除对话**: active_conv 索引正确调整
+            - 🐛 **手写线程**: 退出时正确 join
+            - 🐛 **config 解析**: 支持含 `=` 的值 (splitn(2, '='))
+            - 🐛 **UI 残留**: 候选字行覆盖不堆叠
+            - 🧹 **代码清理**: hwr_engine match arm 重复字符已去重
+
+            ### 自定义构建
+            ```bash
+            sudo apt install build-essential grub-efi-amd64-bin xorriso mtools
+            git clone https://github.com/${{ github.repository }}.git
+            cd ${{ github.repository }}
+            bash scripts/build_all.sh
+            ```
+          files: |
+            artifacts/k_K-linuxAI-${{ github.ref_name }}.iso
+            artifacts/k_K-linuxAI-${{ github.ref_name }}.efi
+            artifacts/k_K-linuxAI-${{ github.ref_name }}.7z
+            artifacts/k_K-linuxAI-${{ github.ref_name }}-source.zip
+            artifacts/k_K-linuxAI-${{ github.ref_name }}-source.7z
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
