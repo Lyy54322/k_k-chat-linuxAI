@@ -11,6 +11,35 @@ struct JsonParser;
 impl JsonParser {
     /// 从 OpenAI 格式 JSON 中提取 choices[0].message.content
     pub fn extract_content(json: &str) -> Result<String, String> {
+        // 定位 "choices" 数组
+        if let Some(choices_start) = json.find("\"choices\"") {
+            // 找到 choices 后面的 [
+            let after = &json[choices_start + 10..];
+            if let Some(bracket_pos) = after.find('[') {
+                let array = &after[bracket_pos + 1..];
+                // 找第一个 { (第一个 choice)
+                if let Some(choice_start) = array.find('{') {
+                    let choice = &array[choice_start + 1..];
+                    // 在第一个 choice 对象中找 "message"
+                    if let Some(msg_start) = choice.find("\"message\"") {
+                        let after_msg = &choice[msg_start + 10..];
+                        if let Some(brace_pos) = after_msg.find('{') {
+                            let msg_obj = &after_msg[brace_pos + 1..];
+                            // 在 message 中找 "content"
+                            if let Some(content_key) = msg_obj.find("\"content\"") {
+                                let after_content = &msg_obj[content_key + 9..];
+                                if !after_content.starts_with(':') { return Err("AI返回数据解析异常".into()); }
+                                let after_colon = after_content[1..].trim_start();
+                                if after_colon.starts_with('"') {
+                                    if let Some(s) = Self::parse_string(&after_colon[1..]) { return Ok(s); }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // fallback: 如果找不到 choices 结构，尝试找最后一个 "content"（兼容简单响应）
         let mut search_from = 0;
         let mut last_pos = 0;
         while let Some(pos) = json[search_from..].find("\"content\"") {
@@ -20,7 +49,6 @@ impl JsonParser {
         if last_pos == 0 && !json.contains("\"content\"") {
             return Err("AI返回数据解析异常".into());
         }
-
         let after_key = json[last_pos + 9..].trim_start();
         if !after_key.starts_with(':') { return Err("AI返回数据解析异常".into()); }
         let after_colon = after_key[1..].trim_start();
@@ -59,9 +87,27 @@ impl JsonParser {
     }
 
     pub fn check_error(json: &str) -> Option<String> {
-        if json.contains("\"error\"") {
-            Self::extract_content(json).ok().or_else(|| Some("未知API错误".into()))
-        } else { None }
+        if !json.contains("\"error\"") { return None; }
+        // 尝试解析 error.message
+        if let Some(err_start) = json.find("\"error\"") {
+            let after = &json[err_start + 7..];
+            if let Some(brace_pos) = after.find('{') {
+                let err_obj = &after[brace_pos + 1..];
+                if let Some(msg_start) = err_obj.find("\"message\"") {
+                    let after_msg = &err_obj[msg_start + 9..];
+                    let after_colon = after_msg.trim_start();
+                    if after_colon.starts_with(':') {
+                        let val = after_colon[1..].trim_start();
+                        if val.starts_with('"') {
+                            if let Some(s) = Self::parse_string(&val[1..]) {
+                                return Some(s);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Some("未知API错误".into())
     }
 }
 
@@ -98,14 +144,14 @@ impl ApiClient {
         }
         body.push_str("]}");
 
-        let tmp_path = "/tmp/kk_chat_post.json";
+        let tmp_path = format!("/tmp/kk_chat_post_{}.json", std::process::id());
         if let Err(_) = std::fs::write(tmp_path, &body) {
             return Err("写入临时请求文件失败".into());
         }
 
         let output = Command::new("/bin/busybox")
-            .args(&["wget", "-q", "-O", "-", "--no-check-certificate",
-                     "--post-file", tmp_path,
+            .args(&["wget", "-q", "-O", "-", "--timeout=30",
+                     "--post-file", &tmp_path,
                      "--header", &format!("Authorization: Bearer {}", self.api_key),
                      "--header", "Content-Type: application/json",
                      &self.api_base])

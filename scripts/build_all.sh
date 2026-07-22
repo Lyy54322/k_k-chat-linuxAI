@@ -9,16 +9,20 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 ARTIFACT_DIR="$ROOT/artifacts"
 export ARTIFACT_DIR
+VERSION="${VERSION:-v0.1.1}"
+export VERSION
 
 echo "==========================================="
-echo "  k_K chat linuxAI v0.1.1 完整构建"
+echo "  k_K chat linuxAI ${VERSION} 完整构建"
 echo "==========================================="
 
 mkdir -p "$ARTIFACT_DIR"
 # 1. 编译 k_K (rust 静态二进制, 链接 musl, 不依赖 libc)
 echo "[1/5] 编译 k_K 主程序..."
-cd "$ROOT/k_K"
-if command -v cargo >/dev/null 2>&1; then
+if [ "${SKIP_K_K_BUILD:-0}" = "1" ] && [ -x "$ARTIFACT_DIR/k_K" ]; then
+    echo ">>> 跳过 k_K 编译 (SKIP_K_K_BUILD=1, 产物已存在: $ARTIFACT_DIR/k_K)"
+elif command -v cargo >/dev/null 2>&1; then
+    cd "$ROOT/k_K"
     # 优先 musl 静态, 失败回退 gnu
     if cargo build --release --target x86_64-unknown-linux-musl 2>&1 | tail -5; then
         cp target/x86_64-unknown-linux-musl/release/kk_chat "$ARTIFACT_DIR/k_K"
