@@ -66,8 +66,9 @@ jobs:
         working-directory: k_K
         run: |
           cargo build --release --target x86_64-unknown-linux-musl
-          ls -la target/x86_64-unknown-linux-musl/release/k_K
-          file target/x86_64-unknown-linux-musl/release/k_K
+          # Cargo.toml 的 package.name = "kk_chat"，产物叫 kk_chat 不是 k_K
+          ls -la target/x86_64-unknown-linux-musl/release/
+          file target/x86_64-unknown-linux-musl/release/kk_chat
 
       - name: Run full build pipeline
         env:
@@ -75,7 +76,7 @@ jobs:
           K_K_BIN: ${{ github.workspace }}/artifacts/k_K
         run: |
           mkdir -p "$ARTIFACT_DIR"
-          cp k_K/target/x86_64-unknown-linux-musl/release/k_K "$ARTIFACT_DIR/k_K"
+          cp k_K/target/x86_64-unknown-linux-musl/release/kk_chat "$ARTIFACT_DIR/k_K"
           chmod +x scripts/*.sh
           bash scripts/build_all.sh
 
