@@ -147,7 +147,7 @@ fn main() {
 
         let mut line = String::new();
         match read_line_with_timeout(&mut line, Duration::from_millis(200)) {
-            Ok(true) => {
+            Ok(ReadOutcome::Line) => {
                 let trimmed = line.trim().to_string();
                 if trimmed.is_empty() && !showing_candidates.load(Ordering::SeqCst) {
                     continue;
@@ -206,8 +206,22 @@ fn main() {
                     send_and_display(full_input, &config, &mut conversations, active_conv, &ui);
                 }
             }
-            Ok(false) => continue, // timeout
-            Err(_) => break,       // Ctrl+C
+            Ok(ReadOutcome::FunctionKey(n)) => {
+                // 候选字模式下 F 键无效，避免误触发
+                if showing_candidates.load(Ordering::SeqCst) {
+                    continue;
+                }
+                match n {
+                    1 => { let _ = process_command("/setting",    &mut config, &ui, &mut conversations, &mut active_conv, &hw_state); }
+                    2 => { let _ = process_command("/tabs",       &mut config, &ui, &mut conversations, &mut active_conv, &hw_state); }
+                    3 => { let _ = process_command("/clear",      &mut config, &ui, &mut conversations, &mut active_conv, &hw_state); }
+                    4 => { ui.show_help(); }
+                    5 => { let _ = process_command("/clearboard", &mut config, &ui, &mut conversations, &mut active_conv, &hw_state); }
+                    _ => {}
+                }
+            }
+            Ok(ReadOutcome::Timeout) => continue,
+            Err(_) => break, // Ctrl+C
         }
     }
 
@@ -219,7 +233,19 @@ fn main() {
 // ═══════════════════════════════════════════════════════════════════
 //  超时行读取（让主循环可以轮询手写结果）
 // ═══════════════════════════════════════════════════════════════════
-fn read_line_with_timeout(buf: &mut String, timeout: Duration) -> Result<bool, io::Error> {
+
+/// 读取一次输入循环的返回结果
+#[derive(Debug, PartialEq)]
+enum ReadOutcome {
+    /// 没有输入（超时）
+    Timeout,
+    /// 用户按了回车，输入行已写入 buf
+    Line,
+    /// 用户按了 F1-F5 之一
+    FunctionKey(u8),
+}
+
+fn read_line_with_timeout(buf: &mut String, timeout: Duration) -> Result<ReadOutcome, io::Error> {
     let stdin = io::stdin();
     let mut handle = stdin.lock();
     let fd = handle.as_raw_fd();
@@ -237,7 +263,7 @@ fn read_line_with_timeout(buf: &mut String, timeout: Duration) -> Result<bool, i
                 match ch {
                     '\n' | '\r' => {
                         unsafe { libc::fcntl(fd, libc::F_SETFL, orig_flags); }
-                        return Ok(true);
+                        return Ok(ReadOutcome::Line);
                     }
                     '\x03' => {
                         unsafe { libc::fcntl(fd, libc::F_SETFL, orig_flags); }
@@ -252,7 +278,12 @@ fn read_line_with_timeout(buf: &mut String, timeout: Duration) -> Result<bool, i
                             match handle.read(&mut bytes) {
                                 Ok(1) => {
                                     seq.push(bytes[0] as char);
-                                    if seq.len() >= 3 { break; }
+                                    // F1-F5 vt100: \x1bOP/Q/R/S (3 字符)
+                                    // xterm:     \x1b[11~ / \x1b[12~ / \x1b[13~ / \x1b[14~ / \x1b[15~ (5 字符)
+                                    // linux:     \x1b[[A / \x1b[[B / \x1b[[C / \x1b[[D / \x1b[[E (4 字符)
+                                    if seq.len() >= 5 { break; }
+                                    if seq.len() >= 3 && !seq.contains('[') { break; }
+                                    if seq.len() >= 4 && seq.contains('[') && seq.ends_with(|c: char| c.is_ascii_alphabetic() || c == '~') { break; }
                                 }
                                 Ok(_) | Err(_) => {
                                     if std::time::Instant::now() >= deadline { break; }
@@ -260,6 +291,20 @@ fn read_line_with_timeout(buf: &mut String, timeout: Duration) -> Result<bool, i
                                 }
                             }
                         }
+                        // 识别 F1-F5
+                        let fkey = match seq.as_str() {
+                            "\x1bOP" | "\x1b[11~" | "\x1b[[A" => Some(1u8),
+                            "\x1bOQ" | "\x1b[12~" | "\x1b[[B" => Some(2u8),
+                            "\x1bOR" | "\x1b[13~" | "\x1b[[C" => Some(3u8),
+                            "\x1bOS" | "\x1b[14~" | "\x1b[[D" => Some(4u8),
+                            "\x1b[15~" | "\x1b[[E"             => Some(5u8),
+                            _ => None,
+                        };
+                        if let Some(n) = fkey {
+                            unsafe { libc::fcntl(fd, libc::F_SETFL, orig_flags); }
+                            return Ok(ReadOutcome::FunctionKey(n));
+                        }
+                        // 方向键保留旧行为
                         if seq.starts_with("\x1b[") {
                             let code = &seq[2..];
                             if code == "A" { buf.push('\x1b'); buf.push('['); buf.push('A'); }
@@ -273,13 +318,13 @@ fn read_line_with_timeout(buf: &mut String, timeout: Duration) -> Result<bool, i
             }
             Ok(0) => {
                 unsafe { libc::fcntl(fd, libc::F_SETFL, orig_flags); }
-                return Ok(true);
+                return Ok(ReadOutcome::Line);
             }
             Ok(_) => continue,
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                 if start.elapsed() >= timeout {
                     unsafe { libc::fcntl(fd, libc::F_SETFL, orig_flags); }
-                    return Ok(false);
+                    return Ok(ReadOutcome::Timeout);
                 }
                 thread::sleep(Duration::from_millis(10));
             }
