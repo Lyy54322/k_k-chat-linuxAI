@@ -32,17 +32,23 @@ export LC_ALL=zh_CN.UTF-8
 export TERM=linux
 
 # 设置键盘布局 (US 即可,手写不需要键盘)
-loadkeys us 2>/dev/null || true
+# loadkeys 在 BusyBox 中不可用,跳过
+# loadkeys us 2>/dev/null || true
 
-# 启动 k_K
+# 启动 k_K (自动重启)
 if [ -x "$K_K_BIN" ]; then
     echo ">>> 启动 k_K 主程序 (路径: $K_K_BIN)..."
-    # 跳到虚拟终端 1,避免 console buffer 干扰
-    if [ -c /dev/tty1 ]; then
-        exec setsid sh -c "echo > /dev/tty1; $K_K_BIN < /dev/tty1 > /dev/tty1 2>&1" &
-    else
-        exec setsid sh -c "$K_K_BIN < /dev/console > /dev/console 2>&1" &
-    fi
+    (
+        while true; do
+            if [ -c /dev/tty1 ]; then
+                setsid sh -c "$K_K_BIN < /dev/tty1 > /dev/tty1 2>&1"
+            else
+                setsid sh -c "$K_K_BIN < /dev/console > /dev/console 2>&1"
+            fi
+            echo ">>> k_K 退出,3 秒后重启..."
+            sleep 3
+        done
+    ) &
 else
     echo "!!! 错误: $K_K_BIN 不存在或不可执行"
     echo "!!! 启动 busybox shell 供调试"

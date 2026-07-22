@@ -36,7 +36,7 @@ impl TerminalUI {
             "    ██  ██        ████        ",
             "    ─────────────────────      ",
         ];
-        println!("\x1b[2J\x1b[H");
+        println!();
         for line in &logo {
             println!("{}{}{}", c::CYAN, line, c::RESET);
         }
@@ -71,16 +71,22 @@ impl TerminalUI {
     }
 
     pub fn show_candidates(&self, candidates: &[String], selected: usize) {
-        // \r 回到行首 + \x1b[2K 清整行，避免上一轮候选字残留
-        print!("\r\x1b[2K{}候选字:{} ", c::CYAN, c::RESET);
+        print!("\r\x1b[2K{}候选字: {}{}", c::CYAN, c::RESET, c::WHITE);
         for (i, c) in candidates.iter().enumerate() {
+            if i > 0 { print!(" "); }
             if i == selected {
-                print!("{}[{}]{}, ", c::CYAN, c, c::RESET);
+                print!("{}[{}{}", c::CYAN, c, c::RESET);
             } else {
-                print!("{}{}{}, ", c::YELLOW, c, c::RESET);
+                print!("{}{}{}", c::YELLOW, c, c::RESET);
             }
+            print!("]");
         }
-        print!("{}↑↓选择 数字键快速选择 回车确认{}", c::CYAN, c::RESET);
+        print!(" {}↑↓选择 数字键1-5 回车确认 Esc取消{}", c::CYAN, c::RESET);
+        io::stdout().flush().ok();
+    }
+
+    pub fn clear_candidates(&self) {
+        print!("\r\x1b[2K");
         io::stdout().flush().ok();
     }
 

@@ -31,18 +31,35 @@ echo ">>> make defconfig..."
 make defconfig 2>&1 | tail -3
 
 # 启用 https 支持的 wget + 常用工具
-sed -i \
-    -e 's/^# CONFIG_STATIC is not set/CONFIG_STATIC=y/' \
-    -e 's/^# CONFIG_FEATURE_WGET_HTTPS is not set/CONFIG_FEATURE_WGET_HTTPS=y/' \
-    -e 's/^# CONFIG_FEATURE_WGET_OPENSSL is not set/CONFIG_FEATURE_WGET_OPENSSL=y/' \
-    -e 's/^# CONFIG_FEATURE_WGET_LONG_OPTIONS is not set/CONFIG_FEATURE_WGET_LONG_OPTIONS=y/' \
-    -e 's/^# CONFIG_FEATURE_WGET_STATUSBAR is not set/CONFIG_FEATURE_WGET_STATUSBAR=y/' \
-    -e 's/^# CONFIG_FEATURE_WGET_AUTHENTICATION is not set/CONFIG_FEATURE_WGET_AUTHENTICATION=y/' \
-    -e 's/^# CONFIG_FEATURE_WGET_FTP is not set/CONFIG_FEATURE_WGET_FTP=y/' \
-    .config
+# 使用辅助函数: 如果配置行已存在(无论注释还是赋值)则 sed 替换,否则 append
+config_set() {
+    local key="$1" val="$2"
+    local cfg=".config"
+    if grep -q "^# ${key} is not set" "$cfg" || grep -q "^${key}=" "$cfg"; then
+        sed -i "s/^# ${key} is not set/${key}=${val}/" "$cfg"
+        sed -i "s/^${key}=.*/${key}=${val}/" "$cfg"
+    else
+        echo "${key}=${val}" >> "$cfg"
+    fi
+}
 
-# 强制开静态
-sed -i 's/^CONFIG_STATIC=.*/CONFIG_STATIC=y/' .config
+config_set CONFIG_STATIC y
+config_set CONFIG_FEATURE_WGET_HTTPS y
+config_set CONFIG_FEATURE_WGET_OPENSSL y
+config_set CONFIG_FEATURE_WGET_LONG_OPTIONS y
+config_set CONFIG_FEATURE_WGET_STATUSBAR y
+config_set CONFIG_FEATURE_WGET_AUTHENTICATION y
+config_set CONFIG_FEATURE_WGET_FTP y
+
+# 验证关键配置是否生效
+echo ">>> 验证 busybox 关键配置..."
+for cfg in CONFIG_STATIC CONFIG_FEATURE_WGET_HTTPS CONFIG_FEATURE_WGET_OPENSSL; do
+    if ! grep -q "^${cfg}=y" .config; then
+        echo "!!! 错误: ${cfg} 未在 .config 中启用"
+        exit 1
+    fi
+done
+echo ">>> 关键配置验证通过"
 
 echo ">>> make -j$(nproc)..."
 make -j"$(nproc)" 2>&1 | tail -5

@@ -4,6 +4,7 @@
 //! 持久化写入同目录 config.txt，对话上下文仅存内存。
 
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 
 pub struct AppConfig {
     pub api_base: String,
@@ -16,7 +17,11 @@ pub struct AppConfig {
 
 impl AppConfig {
     pub fn load() -> Self {
-        let config_path = "config.txt".to_string();
+        let config_path = if std::path::Path::new("/etc/k_K/config.txt").exists() {
+            "/etc/k_K/config.txt".to_string()
+        } else {
+            "config.txt".to_string()
+        };
         let mut config = AppConfig {
             api_base: String::new(),          // 如 https://api.openai.com/v1/chat/completions
             api_key: String::new(),           // ← 无硬编码密钥，用户自行配置
@@ -37,7 +42,7 @@ impl AppConfig {
                         "api_base"      => config.api_base = value.trim().to_string(),
                         "api_key"       => config.api_key = value.trim().to_string(),
                         "model_id"      => config.model_id = value.trim().to_string(),
-                        "system_prompt" => config.system_prompt = value.trim().to_string(),
+                        "system_prompt" => config.system_prompt = value.trim().replace("\\n", "\n"),
                         "ai_name"       => config.ai_name = value.trim().to_string(),
                         _ => {}
                     }
@@ -54,10 +59,14 @@ impl AppConfig {
         content.push_str(&format!("api_base={}\n", self.api_base));
         content.push_str(&format!("api_key={}\n", self.api_key));
         content.push_str(&format!("model_id={}\n", self.model_id));
-        content.push_str(&format!("system_prompt={}\n", self.system_prompt));
+        content.push_str(&format!("system_prompt={}\n", self.system_prompt.replace('\n', "\\n")));
         content.push_str(&format!("ai_name={}\n", self.ai_name));
 
-        fs::write(&self.config_path, content)
-            .map_err(|e| format!("写入配置文件失败: {}", e))
+        fs::write(&self.config_path, &content)
+            .map_err(|e| format!("写入配置文件失败: {}", e))?;
+        let mut perms = std::fs::metadata(&self.config_path).map_err(|e| format!("获取文件权限失败: {}", e))?.permissions();
+        perms.set_mode(0o600);
+        std::fs::set_permissions(&self.config_path, perms).map_err(|e| format!("设置文件权限失败: {}", e))?;
+        Ok(())
     }
 }

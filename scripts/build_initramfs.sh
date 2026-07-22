@@ -47,11 +47,13 @@ install -m 0755 "$K_K_BIN" "$WORK/usr/bin/k_K"
 # 3. 装 init 脚本
 install -m 0755 "$ROOT/rootfs/init" "$WORK/init"
 
-# 4. 装默认配置 (允许空字符串,因为用户首启需要填写 API key)
+# 4. 装默认配置 (永远用占位符,绝不打包开发者本地的 k_K/config.txt,
+#    避免真实 API key 泄漏到发行版 initramfs 里)
 if [ -f "$ROOT/k_K/config.txt" ]; then
-    install -m 0644 "$ROOT/k_K/config.txt" "$WORK/etc/k_K/config.txt"
-else
-    cat > "$WORK/etc/k_K/config.txt" <<'EOF'
+    echo "!!! 警告: 检测到 $ROOT/k_K/config.txt,为了避免真实密钥泄漏到发行版," >&2
+    echo "    initramfs 仍然使用下方占位符配置。本地 k_K/config.txt 不会被打包。" >&2
+fi
+cat > "$WORK/etc/k_K/config.txt" <<'EOF'
 # k_K chat linuxAI 配置文件
 # 首次启动后,程序主菜单可输入 s 编辑此文件
 api_base = https://api.openai.com/v1
@@ -60,8 +62,7 @@ model_id = gpt-3.5-turbo
 system_prompt = 你是一个简洁的中文助手,回答控制在100字以内。
 ai_name = AI助手
 EOF
-    chmod 0644 "$WORK/etc/k_K/config.txt"
-fi
+chmod 0644 "$WORK/etc/k_K/config.txt"
 
 # 5. 装 unifont 字体 (如果存在)
 if [ -f "$ARTIFACT_DIR/unifont.pf2" ]; then

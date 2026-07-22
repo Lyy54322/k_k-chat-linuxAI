@@ -44,7 +44,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
               build-essential bc bison flex libelf-dev libssl-dev \
-              wget xz-utils cpio \
+              wget xz-utils cpio perl \
               grub-efi-amd64-bin xorriso mtools dosfstools \
               p7zip-full file ca-certificates
 
@@ -74,8 +74,11 @@ jobs:
         env:
           ARTIFACT_DIR: ${{ github.workspace }}/artifacts
           K_K_BIN: ${{ github.workspace }}/artifacts/k_K
+          VERSION: ${{ github.ref_name }}
+          SKIP_K_K_BUILD: "1"
         run: |
           mkdir -p "$ARTIFACT_DIR"
+          # k_K 已在前面编译完成,直接复制产物跳过重复编译
           cp k_K/target/x86_64-unknown-linux-musl/release/kk_chat "$ARTIFACT_DIR/k_K"
           chmod +x scripts/*.sh
           bash scripts/build_all.sh
@@ -90,18 +93,23 @@ jobs:
 
       - name: Package 7z (release archive)
         run: |
-          cd artifacts
+          cd "$GITHUB_WORKSPACE"
           VERSION=${GITHUB_REF_NAME}
-          7z a -mx=9 "k_K-linuxAI-${VERSION}.7z" \
-              k_K-linuxAI-${VERSION}.iso \
-              k_K-linuxAI-${VERSION}.efi \
-              vmlinuz initramfs.cpio.xz \
-              busybox unifont.pf2
-          7z a -mx=9 "k_K-linuxAI-${VERSION}-source.7z" \
-              "../k_K/src" "../k_K/Cargo.toml" \
-              "../scripts" "../boot" "../rootfs" \
-              "../k_K/config.txt" 2>/dev/null || true
-          ls -la
+          # 完整 release 压缩包: ISO + EFI + 内部组件
+          7z a -mx=9 "artifacts/k_K-linuxAI-${VERSION}.7z" \
+              "artifacts/k_K-linuxAI-${VERSION}.iso" \
+              "artifacts/k_K-linuxAI-${VERSION}.efi" \
+              artifacts/vmlinuz artifacts/initramfs.cpio.xz \
+              artifacts/busybox artifacts/unifont.pf2
+          # 源码包: 与 source.zip 保持完全一致,只额外排除构建产物和 k_K/config.txt
+          # 排除: artifacts/, k_K/target/, .git/, k_K/config.txt
+          7z a -mx=9 "artifacts/k_K-linuxAI-${VERSION}-source.7z" \
+              . \
+              -xr!artifacts \
+              -xr!k_K/target \
+              -xr!.git \
+              -xr!k_K/config.txt
+          ls -la artifacts/
 
       - name: Upload artifacts to release
         uses: softprops/action-gh-release@v2
@@ -130,11 +138,18 @@ jobs:
 
             ### 烧录方式
             ```bash
-            # U 盘
+            # U 盘 (ISO 镜像)
             sudo dd if=k_K-linuxAI-${{ github.ref_name }}.iso of=/dev/sdX bs=4M status=progress
 
-            # 或直接 dd efi 文件
-            sudo dd if=k_K-linuxAI-${{ github.ref_name }}.efi of=/dev/sdX1 bs=4M
+            # EFI 启动镜像 (放到 FAT32 分区的 EFI/BOOT/BOOTX64.EFI)
+            # 方式一: 使用 efibootmgr
+            sudo mkfs.fat -F32 /dev/sdX1
+            sudo mount /dev/sdX1 /mnt
+            sudo mkdir -p /mnt/EFI/BOOT
+            sudo cp k_K-linuxAI-${{ github.ref_name }}.efi /mnt/EFI/BOOT/BOOTX64.EFI
+            sudo umount /mnt
+            # 方式二: 使用 efibootmgr 添加启动项 (需已安装 EFI 系统分区)
+            # sudo efibootmgr -c -d /dev/sdX -p 1 -l '\EFI\BOOT\BOOTX64.EFI' -L 'k_K-linuxAI'
             ```
 
             ### 修复 (vs v0.1.0)

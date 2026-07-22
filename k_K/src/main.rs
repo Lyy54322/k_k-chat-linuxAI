@@ -132,13 +132,21 @@ fn main() {
     loop {
         // 检查手写识别结果
         if let Some(ref state) = hw_state {
-            let mut s = state.lock().unwrap();
+            let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
             if !s.pending_candidates.is_empty() {
                 candidates = std::mem::take(&mut s.pending_candidates);
                 selected_cand = 0;
                 showing_candidates.store(true, Ordering::SeqCst);
+                s.no_match_pending.store(false, Ordering::SeqCst);
                 drop(s);
                 ui.show_candidates(&candidates, selected_cand);
+                continue;
+            }
+            // v0.1.2: 如果上次识别没匹配上, 打印一条提示
+            if s.no_match_pending.swap(false, Ordering::SeqCst) {
+                drop(s);
+                println!("\r\x1b[2K{}提示: 未识别出候选字, 请在画板上继续写或重试{}", colors::YELLOW, colors::RESET);
+                ui.show_prompt_with_input(&input_buf);
                 continue;
             }
         }
@@ -159,20 +167,6 @@ fn main() {
                 // 候选字选择
                 if showing_candidates.load(Ordering::SeqCst) {
                     match trimmed.as_str() {
-                        "\x1b[A" => {
-                            if selected_cand > 0 {
-                                selected_cand -= 1;
-                                ui.show_candidates(&candidates, selected_cand);
-                            }
-                            continue;
-                        }
-                        "\x1b[B" => {
-                            if selected_cand < candidates.len().saturating_sub(1) {
-                                selected_cand += 1;
-                                ui.show_candidates(&candidates, selected_cand);
-                            }
-                            continue;
-                        }
                         // 数字键 1-5 快速选择对应候选字（README 承诺的功能）
                         s if s.len() == 1 => {
                             if let Some(d) = s.chars().next().and_then(|c| c.to_digit(10)) {
@@ -230,6 +224,29 @@ fn main() {
                     send_and_display(full_input, &config, &mut conversations, active_conv, &ui);
                 }
             }
+            Ok(ReadOutcome::ArrowUp) => {
+                if showing_candidates.load(Ordering::SeqCst) && selected_cand > 0 {
+                    selected_cand -= 1;
+                    ui.show_candidates(&candidates, selected_cand);
+                }
+                continue;
+            }
+            Ok(ReadOutcome::ArrowDown) => {
+                if showing_candidates.load(Ordering::SeqCst) && selected_cand < candidates.len().saturating_sub(1) {
+                    selected_cand += 1;
+                    ui.show_candidates(&candidates, selected_cand);
+                }
+                continue;
+            }
+            Ok(ReadOutcome::Escape) => {
+                if showing_candidates.load(Ordering::SeqCst) {
+                    candidates.clear();
+                    showing_candidates.store(false, Ordering::SeqCst);
+                    ui.clear_candidates();
+                    ui.show_prompt_with_input(&input_buf);
+                }
+                continue;
+            }
             Ok(ReadOutcome::FunctionKey(n)) => {
                 // 候选字模式下 F 键无效，避免误触发
                 if showing_candidates.load(Ordering::SeqCst) {
@@ -271,6 +288,12 @@ enum ReadOutcome {
     Line,
     /// 用户按了 F1-F5 之一
     FunctionKey(u8),
+    /// 方向键上
+    ArrowUp,
+    /// 方向键下
+    ArrowDown,
+    /// Escape 键
+    Escape,
 }
 
 fn read_line_with_timeout(buf: &mut String, timeout: Duration) -> Result<ReadOutcome, io::Error> {
@@ -332,11 +355,18 @@ fn read_line_with_timeout(buf: &mut String, timeout: Duration) -> Result<ReadOut
                             unsafe { libc::fcntl(fd, libc::F_SETFL, orig_flags); }
                             return Ok(ReadOutcome::FunctionKey(n));
                         }
-                        // 方向键保留旧行为
+                        // 方向键直接返回
                         if seq.starts_with("\x1b[") {
                             let code = &seq[2..];
-                            if code == "A" { buf.push('\x1b'); buf.push('['); buf.push('A'); }
-                            else if code == "B" { buf.push('\x1b'); buf.push('['); buf.push('B'); }
+                            unsafe { libc::fcntl(fd, libc::F_SETFL, orig_flags); }
+                            if code == "A" { return Ok(ReadOutcome::ArrowUp); }
+                            if code == "B" { return Ok(ReadOutcome::ArrowDown); }
+                            return Ok(ReadOutcome::Timeout);
+                        }
+                        // 单独的 Escape 键（没有后续字符）
+                        if seq == "\x1b" {
+                            unsafe { libc::fcntl(fd, libc::F_SETFL, orig_flags); }
+                            return Ok(ReadOutcome::Escape);
                         }
                         continue;
                     }
@@ -426,7 +456,7 @@ fn process_command(
         }
         "/clearboard" => {
             if let Some(state) = hw_state {
-                let mut s = state.lock().unwrap();
+                let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
                 s.strokes.clear();
                 s.needs_redraw = true;
             }
