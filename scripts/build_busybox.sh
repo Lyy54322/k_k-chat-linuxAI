@@ -47,6 +47,8 @@ echo ">>> make -j$(nproc)..."
 make -j"$(nproc)" 2>&1 | tail -5
 
 cp busybox "$ARTIFACT_DIR/busybox"
-"$ARTIFACT_DIR/busybox" --help -h 2>&1 | head -3
+# --help -h 在某些 busybox 静态编译版本下会找不到 help applet，
+# 单独跑 --help 通常没事；用 || true 兜底防止 set -e 把脚本弄挂
+"$ARTIFACT_DIR/busybox" --help 2>&1 | head -3 || true
 
 echo ">>> busybox 已生成: $ARTIFACT_DIR/busybox ($(du -h "$ARTIFACT_DIR/busybox" | cut -f1))"
