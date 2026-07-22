@@ -1,0 +1,16 @@
+/target/
+*.efi
+*.iso
+*.img
+*.cpio.gz
+*.tar.xz
+*.tar.gz
+*.o
+*.a
+*.so
+*.swp
+*~
+.DS_Store
+config.txt
+.vscode/
+.idea/
